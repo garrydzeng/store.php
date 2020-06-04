@@ -1,0 +1,22 @@
+{
+  "name": "garrydzeng/store",
+  "version": "0.1.0",
+  "require": {
+    "ext-pdo": "*",
+    "phpmyadmin/sql-parser": "^5.0",
+    "php": "^7.1"
+  },
+  "require-dev": {
+    "phpunit/dbunit": "^4.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "GarryDzeng\\Store\\": "src"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "GarryDzeng\\Store\\": "spec"
+    }
+  }
+}
