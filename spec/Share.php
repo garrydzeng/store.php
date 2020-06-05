@@ -1,8 +1,8 @@
 <?php
 namespace GarryDzeng\Store {
 
-  use PDOException;
   use PDO;
+  use PDOException;
 
   abstract class Share extends \PHPUnit\DbUnit\TestCase {
 

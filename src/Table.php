@@ -3,25 +3,23 @@ namespace GarryDzeng\Store {
 
   use InvalidArgumentException;
   use PDO;
-  use PDOException;
   use PhpMyAdmin\SqlParser\Components\Condition;
   use PhpMyAdmin\SqlParser\Components\Limit;
   use PhpMyAdmin\SqlParser\Components\OrderKeyword;
   use PhpMyAdmin\SqlParser\Parser;
   use PhpMyAdmin\SqlParser\Statements\SelectStatement;
   use ReflectionClass;
-  use ReflectionException;
 
   /**
    * @inheritdoc
    */
   class Table implements Contract\Table {
 
+    private $name;
+    private $definitions;
     private $parent;
-    private $definitions;  // column definitions
-    private $name;         // its name
-    private $connection;   // an openned connection
-    private $id;           // PK
+    private $connection;
+    private $id;
 
     public function __construct(PDO $connection, array $options = []) {
 
@@ -38,10 +36,10 @@ namespace GarryDzeng\Store {
         $name = $this->tableize();
       }
 
-      $this->parent = $parent;
+      $this->name = $parent ? "`$parent`.`$name`" : "`$name`";
       $this->connection = $connection;
-      $this->name = $parent ? "$parent.$name" : $name;
-      $this->definitions = $definitions === true ? $this->createDefinitions($connection, $this->name) : $definitions ?? [];
+      $this->parent = $parent;
+      $this->definitions = $definitions ?? [];
       $this->id = $id ?? 'id';
     }
 
@@ -49,78 +47,30 @@ namespace GarryDzeng\Store {
       return strtolower(preg_replace('/(?<=\w)([A-Z])/', '_$1', (new ReflectionClass($this))->getShortName()));
     }
 
-    private function keyof($nativeType, $length) {
-      return $length == 1 && strcasecmp($nativeType, 'tiny') == 0 ? 'boolean' : strtolower($nativeType);
-    }
+    private function whereSingleOrCompositeKey($value, &$composited = false) {
 
-    private function createDefinitions(PDO $connection, $table) {
+      $composited = is_array($value);
 
-      static $binding = [
-        'tiny'=> PDO::PARAM_INT,
-        'boolean'=> PDO::PARAM_BOOL,
-        'short'=> PDO::PARAM_INT,
-        'newdecimal'=> PDO::PARAM_STR,
-        'int24'=> PDO::PARAM_INT,
-        'longlong'=> PDO::PARAM_INT,
-        'long'=> PDO::PARAM_INT,
-        'float'=> PDO::PARAM_STR,
-        'double'=> PDO::PARAM_STR,
-        'year'=> PDO::PARAM_INT,
-        'integer'=> PDO::PARAM_INT,
-        'bit'=> PDO::PARAM_STR,
-      ];
+      if ($composited) {
 
-      // retrieve metadata only
-      $statement = $connection->query("SELECT * FROM $table LIMIT 0");
-      $done = [];
+        $keys = array_keys($value);
 
-      // handle by column
-      for ($index = 0, $total = $statement->columnCount(); $index < $total; $index++) {
-
-        [
-          'name'=> $name,
-          'native_type'=> $nativeType,
-          'len'=> $len
-        ] = $statement->getColumnMeta($index);
-
-        // check if unsupported
-        if (isset(
-          $name,
-          $nativeType,
-          $len
-        )) {
-          $done[$name] = $binding[$this->keyof($nativeType, $len)] ?? PDO::PARAM_STR;
-        }
-        else {
-          throw new InvalidArgumentException(
-            'Metadata not found, '.
-            'this database driver does not support PDO::getColumnMeta(int) function or '.
-            'no result exists'
-          );
-        }
-      }
-
-      return $done;
-    }
-
-    private function composite($value) {
-
-      $valid = [];
-
-      if (is_array($value)) {
-
-        $valid = array_keys($value);
-
-        if (!$valid) {
+        // check if empty
+        if (!$keys) {
           throw new InvalidArgumentException(
             'Key is empty,'.
             'empty array is not a valid composite key,'.
             'please check.'
           );
         }
+
+        return implode(' AND ', array_map(
+          function($value) { return "`$value`=?"; },
+          $keys
+        ));
       }
 
-      return $valid;
+      return "$this->id=?";
     }
 
     /**
@@ -216,33 +166,27 @@ namespace GarryDzeng\Store {
 
     protected function query($input, array $parameters = []) {
 
-      $definitions = $this->definitions;
-      $connection = $this->connection;
-
       if (!$parameters) {
-        $statement = $connection->query($input);
-      }
-      else {
-
-        $statement = $connection->prepare($input);
-
-        foreach ($parameters as $parameter => $value) {
-          $statement->bindValue(
-            $parameter,
-            $value,
-            $this->parameterize(
-              $parameter
-            )
-          );
-        }
-
-        $statement->execute();
+        return new Statement($this->connection->query($input), $this->definitions);
       }
 
-      return new Statement(
-        $statement,
-        $definitions
-      );
+      $statement = $this
+        ->connection
+        ->prepare($input);
+
+      foreach ($parameters as $parameter => $value) {
+        $statement->bindValue(
+          $parameter,
+          $value,
+          $this->parameterize(
+            $parameter
+          )
+        );
+      }
+
+      $statement->execute();
+
+      return new Statement($statement, $this->definitions);
     }
 
     protected function prepare($input) {
@@ -278,17 +222,20 @@ namespace GarryDzeng\Store {
         );
       }
 
-      // escape
-      $fields = array_map(
-        function($you) { return "`$you`"; },
-        $fields
-      );
+      $escaped = [];
+      $connection = $this->connection;
+      $count = 0;
 
-      $statement = $this->prepare(sprintf('INSERT INTO %s(%s)VALUES(?%s)', $this->name, implode(',', $fields), str_repeat(',?', count($fields)-1)));
+      foreach ($fields as $i => $field) {
+        $escaped[] = "`$field`";
+        $count++;
+      }
+
+      $statement = $connection->prepare(sprintf('INSERT INTO %s(%s)VALUES(?%s)', $this->name, implode(',', $escaped), str_repeat(',?', $count - 1)));
       $parameter = 1;
 
       foreach ($state as $ignored => $value) {
-        $statement->bind(
+        $statement->bindValue(
           $parameter++,
           $value,
           $this->parameterize(
@@ -316,30 +263,26 @@ namespace GarryDzeng\Store {
         );
       }
 
-      $composite = $this->composite($identity);
-
-      $statement = $this->prepare(
-        "UPDATE $this->name".
-        ' SET '.
-          implode(',', array_map(
-            function($update) { return "`$update`=?"; },
-            $updates
-          )).
-        ' WHERE '.
-        (
-          !$composite ?
-            "$this->id=?" :
-            implode(' AND ', array_map(
-              function($value) { return "`$value`=?"; },
-              $composite
-            ))
-        )
-      );
+      $statement = $this
+        ->connection
+        ->prepare(
+          "UPDATE $this->name ".
+          "SET ".
+            implode(',', array_map(
+              function($update) { return "`$update`=?"; },
+              $updates
+            )).
+          "WHERE ".
+            $this->whereSingleOrCompositeKey(
+              $identity,
+              $composited
+            )
+        );
 
       $parameter = 1;
 
       foreach ($state as $ignored => $value) {
-        $statement->bind(
+        $statement->bindValue(
           $parameter++,
           $value,
           $this->parameterize(
@@ -349,12 +292,12 @@ namespace GarryDzeng\Store {
       }
 
       // where: bind as primary key
-      if (!$composite) {
-        $statement->bind($parameter++, $identity, $this->parameterize($this->name));
+      if (!$composited) {
+        $statement->bindValue($parameter, $identity, $this->parameterize($this->id));
       }
       else {
         foreach ($identity as $ignored => $value) {
-          $statement->bind(
+          $statement->bindValue(
             $parameter++,
             $value,
             $this->parameterize(
@@ -373,32 +316,24 @@ namespace GarryDzeng\Store {
      */
     public function delete($identity) {
 
-      $composite = $this->composite($identity);
+      $statement = $this
+        ->connection
+        ->prepare(
+          "DELETE FROM $this->name WHERE ".$this->whereSingleOrCompositeKey(
+            $identity,
+            $composited
+          )
+        );
 
-      $statement = $this->prepare(
-        "DELETE FROM $this->name WHERE ".
-        (
-          // make composite key to be where clause
-          // with field escaping
-          !$composite ?
-            "$this->id=?":
-            implode(' AND ', array_map(
-              function($bloodborne) { return "`$bloodborne`=?"; },
-              $composite
-            ))
-        )
-      );
-
-      // where: bind as primary key
-      if (!$composite) {
-        $statement->bind(1, $identity, $this->parameterize($this->name));
+      if (!$composited) {
+        $statement->bindValue(1, $identity, $this->parameterize($this->id));
       }
       else {
 
         $parameter = 1;
 
         foreach ($identity as $ignored => $value) {
-          $statement->bind(
+          $statement->bindValue(
             $parameter++,
             $value,
             $this->parameterize(

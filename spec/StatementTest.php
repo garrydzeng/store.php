@@ -2,7 +2,6 @@
 namespace GarryDzeng\Store {
 
   use Generator;
-  use PDO;
 
   class StatementTest extends Share {
 
@@ -282,39 +281,39 @@ namespace GarryDzeng\Store {
       );
     }
 
-    public function testBinding() {
-
-      $db = $this
-        ->getConnection()
-        ->getConnection();
-
-      // first we declare PK column as PDO::PARAM_INT ...
-      $statement = new Statement($db->prepare('SELECT * FROM store WHERE PK=:PK1 OR PK=:PK2'), [
-        'PK'=> PDO::PARAM_INT
-      ]);
-
-      $statement->bind('PK1', 1);
-      $statement->bind('PK2', 2);
-
-      $statement->execute();
-
-      var_dump($statement->fetchColumn());
-      var_dump($statement->fetchColumn());
-      var_dump($statement->fetchColumn());
-
-
-//      $statement = $db->prepare('SELECT * FROM store WHERE PK=:PK1 OR PK=:PK2');
-//      $statement->bindValue('PK1', 1, \PDO::PARAM_INT);
-//      $statement->bindValue('PK2', 1, \PDO::PARAM_INT);
+//    public function testBinding() {
+//
+//      $db = $this
+//        ->getConnection()
+//        ->getConnection();
+//
+//      // first we declare PK column as PDO::PARAM_INT ...
+//      $statement = new Statement($db->prepare('SELECT * FROM store WHERE PK=:PK1 OR PK=:PK2'), [
+//        'PK'=> PDO::PARAM_INT
+//      ]);
+//
+//      $statement->bind('PK1', 1);
+//      $statement->bind('PK2', 2);
+//
 //      $statement->execute();
 //
-//      ob_start();
+//      var_dump($statement->fetchColumn());
+//      var_dump($statement->fetchColumn());
+////      var_dump($statement->fetchColumn());
 //
-//      $statement->debugDumpParams();
 //
-//      $buffer = ob_get_clean();
-
-
-    }
+////      $statement = $db->prepare('SELECT * FROM store WHERE PK=:PK1 OR PK=:PK2');
+////      $statement->bindValue('PK1', 1, \PDO::PARAM_INT);
+////      $statement->bindValue('PK2', 1, \PDO::PARAM_INT);
+////      $statement->execute();
+////
+////      ob_start();
+////
+////      $statement->debugDumpParams();
+////
+////      $buffer = ob_get_clean();
+//
+//
+//    }
   }
 }

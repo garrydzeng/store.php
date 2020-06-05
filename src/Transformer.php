@@ -1,12 +1,11 @@
 <?php
 namespace GarryDzeng\Store {
 
-  use PDOStatement;
   use InvalidArgumentException;
-  use PDOException;
-  use Throwable;
-  use RuntimeException;
   use PDO;
+  use PDOStatement;
+  use RuntimeException;
+  use Throwable;
 
   /**
    * @inheritdoc

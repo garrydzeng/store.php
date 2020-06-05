@@ -71,53 +71,6 @@ namespace GarryDzeng\Store {
     }
   }
 
-  class TableDefinitionSpy extends Table {
-
-    public function __construct(PDO $connection) {
-      parent::__construct(
-        $connection,
-        [
-          static::OPTION_DEFINITIONS => true,
-          static::OPTION_NAME => 'store'
-        ]
-      );
-    }
-
-    public function expected() {
-      return [
-        'PK'=> $this->parameterize('PK'),
-        'bit'=> $this->parameterize('bit'),
-        'tinyint'=> $this->parameterize('tinyint'),
-        'bool'=> $this->parameterize('bool'),
-        'smallint'=> $this->parameterize('smallint'),
-        'mediumint'=> $this->parameterize('mediumint'),
-        'int'=> $this->parameterize('int'),
-        'bigint'=> $this->parameterize('bigint'),
-        'decimal'=> $this->parameterize('decimal'),
-        'float'=> $this->parameterize('float'),
-        'double'=> $this->parameterize('double'),
-        'date'=> $this->parameterize('date'),
-        'datetime'=> $this->parameterize('datetime'),
-        'time'=> $this->parameterize('time'),
-        'timestamp'=> $this->parameterize('timestamp'),
-        'year'=> $this->parameterize('year'),
-        'varbinary'=> $this->parameterize('varbinary'),
-        'binary'=> $this->parameterize('binary'),
-        'tinyblob'=> $this->parameterize('tinyblob'),
-        'blob'=> $this->parameterize('blob'),
-        'mediumblob'=> $this->parameterize('mediumblob'),
-        'longblob'=> $this->parameterize('longblob'),
-        'tinytext'=> $this->parameterize('tinytext'),
-        'text'=> $this->parameterize('text'),
-        'mediumtext'=> $this->parameterize('mediumtext'),
-        'longtext'=> $this->parameterize('longtext'),
-        'enum'=> $this->parameterize('enum'),
-        'set'=> $this->parameterize('set'),
-      ];
-    }
-  }
-
-
   class TableTest extends Share {
 
     public function testPaginate() {
@@ -132,49 +85,6 @@ namespace GarryDzeng\Store {
       $this->assertEquals('SELECT AddressLine1, AddressLine2 FROM address WHERE AddressID=195 LIMIT :page, :size', $spy->PAGINATE_STYLE_NAMED());
       $this->assertEquals("INSERT INTO awbuildversion(`SystemInformationID`, `DatabaseVersion`, `VersionDate`, `ModifiedDate`) VALUES (1, '9.04.10.13.00', '2004-10-13 16:43:14', '2004-10-13 14:43:14');SELECT AddressLine1, AddressLine2 FROM address WHERE ModifiedDate>? ORDER BY ModifiedDate ASC LIMIT 0, ?", $spy->PAGINATE_BY_STYLE_QUESTION_MARKER());
       $this->assertEquals('SELECT AddressLine1, AddressLine2 FROM address WHERE AddressID=195 AND ModifiedDate>:indicatable ORDER BY ModifiedDate ASC LIMIT 0, :size', $spy->PAGINATE_BY_STYLE_NAMED());
-    }
-
-    public function testCreateDefinition() {
-
-      $db = $this
-        ->getConnection()
-        ->getConnection();
-
-      $target = new TableDefinitionSpy($db);
-
-      $this->assertEquals(
-        [
-          'PK'=> PDO::PARAM_INT,
-          'bit'=> PDO::PARAM_STR,
-          'tinyint'=> PDO::PARAM_INT,
-          'bool'=> PDO::PARAM_BOOL,
-          'smallint'=> PDO::PARAM_INT,
-          'mediumint'=> PDO::PARAM_INT,
-          'int'=> PDO::PARAM_INT,
-          'bigint'=> PDO::PARAM_INT,
-          'decimal'=> PDO::PARAM_STR,
-          'float'=> PDO::PARAM_STR,
-          'double'=> PDO::PARAM_STR,
-          'date'=> PDO::PARAM_STR,
-          'datetime'=> PDO::PARAM_STR,
-          'time'=> PDO::PARAM_STR,
-          'timestamp'=> PDO::PARAM_STR,
-          'year'=> PDO::PARAM_INT,
-          'varbinary'=> PDO::PARAM_STR,
-          'binary'=> PDO::PARAM_STR,
-          'tinyblob'=> PDO::PARAM_STR,
-          'blob'=> PDO::PARAM_STR,
-          'mediumblob'=> PDO::PARAM_STR,
-          'longblob'=> PDO::PARAM_STR,
-          'tinytext'=> PDO::PARAM_STR,
-          'text'=> PDO::PARAM_STR,
-          'mediumtext'=> PDO::PARAM_STR,
-          'longtext'=> PDO::PARAM_STR,
-          'enum'=> PDO::PARAM_STR,
-          'set'=> PDO::PARAM_STR,
-        ],
-        $target->expected()
-      );
     }
 
     public function testCreateWithEmpty() {

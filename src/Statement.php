@@ -1,11 +1,10 @@
 <?php
 namespace GarryDzeng\Store {
 
-  use PDOStatement;
   use InvalidArgumentException;
-  use RuntimeException;
-  use PDOException;
   use PDO;
+  use PDOStatement;
+  use RuntimeException;
 
   /**
    * @inheritdoc
@@ -116,7 +115,8 @@ namespace GarryDzeng\Store {
 
       $transformer = $this->transformer;
       $source = $this->source;
-      $transformed = [];
+
+      $result = [];
 
       // processing rowset
       foreach ($transformer->transform($source, $style == static::FETCH_ASSOCIATIVE || $style == static::FETCH_NAMED) as [
@@ -126,16 +126,16 @@ namespace GarryDzeng\Store {
       {
         // assoc/indexed
         if (static::FETCH_NAMED != $style) {
-          $transformed[] = $style == static::FETCH_ASSOCIATIVE ? $associative : $index;
+          $result[] = $style == static::FETCH_ASSOCIATIVE ? $associative : $index;
         }
         else {
           foreach ($associative as $key => $value) {
-            $transformed[$key][] = $value;
+            $result[$key][] = $value;
           }
         }
       }
 
-      return $transformed;
+      return $result;
     }
 
     /**
@@ -151,7 +151,8 @@ namespace GarryDzeng\Store {
       foreach ($transformer->transform($source, $indexed == false) as [
         'associative'=> $associative,
         'indexed'=> $index,
-      ]) {
+      ])
+      {
         return $indexed == false ?
           $associative :
           $index
@@ -169,20 +170,18 @@ namespace GarryDzeng\Store {
 
       $transformer = $this->transformer;
       $source = $this->source;
-      $dimension = $source->columnCount() - 1;
 
       // overflow?
-      if ($column < 0x00 || $column > $dimension) {
+      if ($column < 0x00 || $column > $source->columnCount() - 1) {
         throw new InvalidArgumentException(
-          sprintf('Fetch failed, column should between 0 and %d (but got %d)', $dimension, $column)
+          sprintf('Fetch failed, column should between 0 and %d (but got %d)', $source->columnCount() - 1, $column)
         );
       }
 
       // first record
       foreach ($transformer->transform($source) as [
-        "indexed" => $result,
-      ])
-      {
+        'indexed' => $result,
+      ]){
         return $result[
           $column
         ];
