@@ -12,12 +12,11 @@ namespace GarryDzeng\Store\Contract {
     public function visit($indexed = false);
     public function fetchAll($style = self::FETCH_ASSOCIATIVE);
     public function fetch($indexed = false);
-    public function fetchColumn($column = 0);
     public function execute();
     public function reset();
     public function getDimension();
     public function total();
-    public function paginate();
+    public function nextRowset();
     public function pure();
   }
 }

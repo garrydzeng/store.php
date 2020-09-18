@@ -1,19 +1,20 @@
 <?php
 namespace GarryDzeng\Store {
 
-  use InvalidArgumentException;
   use PDO;
 
-  class TableSpy extends Table {
+  class TableExports extends Table {
 
+    /**
+     * @param PDO $connection
+     */
     public function __construct(PDO $connection) {
       parent::__construct(
         $connection,
         [
-          static::OPTION_ID => 'PK',
-          static::OPTION_PARENT => 'test',
-          static::OPTION_NAME => 'store',
-          static::OPTION_DEFINITIONS => [
+          self::OPTION_NAME => 'daydream.store',
+          self::OPTION_ID => 'PK',
+          self::OPTION_DEFINITIONS => [
             'PK'=> PDO::PARAM_INT,
             'bit'=> PDO::PARAM_STR,
             'tinyint'=> PDO::PARAM_INT,
@@ -47,27 +48,20 @@ namespace GarryDzeng\Store {
       );
     }
 
-    public function PAGINATE_STYLE_QUESTION_MARKER() {
-      return $this->paginate(
-        "INSERT INTO awbuildversion(SystemInformationID,DatabaseVersion,VersionDate,ModifiedDate) VALUES(1,'9.04.10.13.00','2004-10-13 16:43:14','2004-10-13 14:43:14');".
-        'SELECT ContactID,CreditCardID FROM contactcreditcard WHERE ContactID IN(SELECT ContactID FROM contact);'
-      );
-    }
-
-    public function PAGINATE_STYLE_NAMED() {
-      return $this->paginate('SELECT AddressLine1,AddressLine2 FROM address WHERE AddressID=195', true);
-    }
-
-    public function PAGINATE_BY_STYLE_QUESTION_MARKER() {
+    public function proxyPaginateBy($input, $indicator, $preferNamedParameter = false, $reversed = false) {
       return $this->paginateBy(
-        "INSERT INTO awbuildversion(SystemInformationID,DatabaseVersion,VersionDate,ModifiedDate) VALUES(1,'9.04.10.13.00','2004-10-13 16:43:14','2004-10-13 14:43:14');".
-        'SELECT AddressLine1,AddressLine2 FROM address;',
-        'ModifiedDate'
+        $input,
+        $indicator,
+        $preferNamedParameter,
+        $reversed
       );
     }
 
-    public function PAGINATE_BY_STYLE_NAMED() {
-      return $this->paginateBy('SELECT AddressLine1,AddressLine2 FROM address WHERE AddressID=195', 'ModifiedDate', true);
+    public function proxyPaginate($input, $preferNamedParameter = false) {
+      return $this->paginate(
+        $input,
+        $preferNamedParameter
+      );
     }
   }
 
@@ -75,39 +69,97 @@ namespace GarryDzeng\Store {
 
     public function testPaginate() {
 
-      $db = $this
+      $tableExports = new TableExports($this
         ->getConnection()
-        ->getConnection();
-
-      $spy = new TableSpy($db);
-
-      $this->assertEquals("INSERT INTO awbuildversion(`SystemInformationID`, `DatabaseVersion`, `VersionDate`, `ModifiedDate`) VALUES (1, '9.04.10.13.00', '2004-10-13 16:43:14', '2004-10-13 14:43:14');SELECT ContactID, CreditCardID FROM contactcreditcard WHERE ContactID IN(SELECT ContactID FROM contact) LIMIT ?, ?", $spy->PAGINATE_STYLE_QUESTION_MARKER());
-      $this->assertEquals('SELECT AddressLine1, AddressLine2 FROM address WHERE AddressID=195 LIMIT :page, :size', $spy->PAGINATE_STYLE_NAMED());
-      $this->assertEquals("INSERT INTO awbuildversion(`SystemInformationID`, `DatabaseVersion`, `VersionDate`, `ModifiedDate`) VALUES (1, '9.04.10.13.00', '2004-10-13 16:43:14', '2004-10-13 14:43:14');SELECT AddressLine1, AddressLine2 FROM address WHERE ModifiedDate>? ORDER BY ModifiedDate ASC LIMIT 0, ?", $spy->PAGINATE_BY_STYLE_QUESTION_MARKER());
-      $this->assertEquals('SELECT AddressLine1, AddressLine2 FROM address WHERE AddressID=195 AND ModifiedDate>:indicatable ORDER BY ModifiedDate ASC LIMIT 0, :size', $spy->PAGINATE_BY_STYLE_NAMED());
-    }
-
-    public function testCreateWithEmpty() {
-
-      $this->expectException(InvalidArgumentException::class);
-
-      $spy = new TableSpy(
-        $this
-          ->getConnection()
-          ->getConnection()
+        ->getConnection()
       );
 
-      $spy->create([]);
+      $input = <<<INPUT
+INSERT INTO awbuildversion(SystemInformationID,DatabaseVersion,VersionDate,ModifiedDate) VALUES(1,'9.04.10.13.00','2004-10-13 16:43:14','2004-10-13 14:43:14');
+SELECT AddressLine1,AddressLine2 FROM address;
+INPUT;
+
+      $this->assertEquals(<<<EXPECTED
+INSERT INTO awbuildversion(`SystemInformationID`, `DatabaseVersion`, `VersionDate`, `ModifiedDate`) VALUES (1, '9.04.10.13.00', '2004-10-13 16:43:14', '2004-10-13 14:43:14');
+SELECT AddressLine1, AddressLine2 FROM address LIMIT ?, ?
+EXPECTED,
+        $tableExports->proxyPaginate(
+          $input,
+          false
+        )
+      );
+
+      // with named
+      $this->assertEquals(<<<EXPECTED
+INSERT INTO awbuildversion(`SystemInformationID`, `DatabaseVersion`, `VersionDate`, `ModifiedDate`) VALUES (1, '9.04.10.13.00', '2004-10-13 16:43:14', '2004-10-13 14:43:14');
+SELECT AddressLine1, AddressLine2 FROM address LIMIT :page, :size
+EXPECTED,
+        $tableExports->proxyPaginate(
+          $input,
+          true
+        )
+      );
+    }
+
+    public function testPaginateBy() {
+
+      $tableExports = new TableExports($this
+        ->getConnection()
+        ->getConnection()
+      );
+
+      $input = <<<INPUT
+INSERT INTO awbuildversion(SystemInformationID,DatabaseVersion,VersionDate,ModifiedDate) VALUES(1,'9.04.10.13.00','2004-10-13 16:43:14','2004-10-13 14:43:14');
+SELECT AddressLine1,AddressLine2 FROM address;
+INPUT;
+
+      // no named parameter
+      $this->assertEquals(<<<EXPECTED
+INSERT INTO awbuildversion(`SystemInformationID`, `DatabaseVersion`, `VersionDate`, `ModifiedDate`) VALUES (1, '9.04.10.13.00', '2004-10-13 16:43:14', '2004-10-13 14:43:14');
+SELECT AddressLine1, AddressLine2 FROM address WHERE ModifiedDate>? ORDER BY ModifiedDate ASC LIMIT 0, ?
+EXPECTED,
+        $tableExports->proxyPaginateBy(
+          $input,
+          'ModifiedDate',
+          false,
+          false
+        )
+      );
+
+      // ASC
+      $this->assertEquals(<<<EXPECTED
+INSERT INTO awbuildversion(`SystemInformationID`, `DatabaseVersion`, `VersionDate`, `ModifiedDate`) VALUES (1, '9.04.10.13.00', '2004-10-13 16:43:14', '2004-10-13 14:43:14');
+SELECT AddressLine1, AddressLine2 FROM address WHERE ModifiedDate>:indicatable ORDER BY ModifiedDate ASC LIMIT 0, :size
+EXPECTED,
+        $tableExports->proxyPaginateBy(
+          $input,
+          'ModifiedDate',
+          true,
+          false
+        )
+      );
+
+      // DESC
+      $this->assertEquals(<<<EXPECTED
+INSERT INTO awbuildversion(`SystemInformationID`, `DatabaseVersion`, `VersionDate`, `ModifiedDate`) VALUES (1, '9.04.10.13.00', '2004-10-13 16:43:14', '2004-10-13 14:43:14');
+SELECT AddressLine1, AddressLine2 FROM address WHERE ModifiedDate<:indicatable ORDER BY ModifiedDate ASC LIMIT 0, :size
+EXPECTED,
+        $tableExports->proxyPaginateBy(
+          $input,
+          'ModifiedDate',
+          true,
+          true
+        )
+      );
     }
 
     public function testCreate() {
 
-      $db = $this
-        ->getConnection()
-        ->getConnection();
+      $connection = $this->getConnection();
 
-      $target = new TableSpy($db);
-      $target->create([
+      $tableExports = new TableExports($connection->getConnection());
+
+      $tableExports->create([
         'bit'=> 2,
         'tinyint'=> 2,
         'bool'=> true,
@@ -137,17 +189,11 @@ namespace GarryDzeng\Store {
         'set'=> 'A'
       ]);
 
-      $PK = $target->lastSequenceValue();
+      $PK = $tableExports->lastSequenceValue();
 
-      $validable = $db
-        ->query(sprintf('SELECT * FROM store WHERE PK=%d', $PK))
-        ->fetch(
-          PDO::FETCH_ASSOC
-        );
-
-      $this->assertEquals(
+      $this->assertTableContains(
         [
-          'PK'=> $PK,
+          'PK'=> strval($PK),
           'bit'=> '50',
           'tinyint'=> '2',
           'bool'=> '1',
@@ -176,53 +222,26 @@ namespace GarryDzeng\Store {
           'enum'=> 'A',
           'set'=> 'A'
         ],
-        $validable
+        $connection->createQueryTable(null, "SELECT * FROM daydream.store")
       );
-
-      return $PK;
-    }
-
-    public function testUpdateWithEmpty() {
-
-      $this->expectException(InvalidArgumentException::class);
-
-      $db = $this
-        ->getConnection()
-        ->getConnection();
-
-      $target = new TableSpy($db);
-      $target->update(1, []);
     }
 
     public function testUpdate() {
 
-      $db = $this
-        ->getConnection()
-        ->getConnection();
+      $connection = $this->getConnection();
 
-      $target = new TableSpy($db);
+      $tableExports = new TableExports($connection->getConnection());
 
-      // update by primary key
-      $target->update(
-        1,
+      $tableExports->update(1, [
+        'tinyint'=> 3,
+      ]);
+
+      // change column(tinyint) value from 1 to 3
+      $this->assertTableContains(
         [
-          'tinytext'=> 'TINYTEXT',
-          'mediumtext'=> 'MEDIUMTEXT',
-          'longtext'=> 'LONGTEXT',
-        ]
-      );
-
-      $result = $db
-        ->query('SELECT * FROM store WHERE PK=1 LIMIT 1')
-        ->fetch(
-          PDO::FETCH_ASSOC
-        );
-
-      $this->assertEquals(
-        [
-          'PK'=> 1,
+          'PK'=> '1',
           'bit'=> '49',
-          'tinyint'=> '1',
+          'tinyint'=> '3',
           'bool'=> '1',
           'smallint'=> '1000',
           'mediumint'=> '1000',
@@ -242,41 +261,25 @@ namespace GarryDzeng\Store {
           'mediumblob'=> "\xAf\xF9\x15\x6B\x6E\x2B\x4D\x1A\x9B\x28\x68\x94\xAC\x01\x79\xA9",
           'longblob'=> "\xAf\xF9\x15\x6B\x6E\x2B\x4D\x1A\x9B\x28\x68\x94\xAC\x01\x79\xA9",
           'blob'=> "\xAf\xF9\x15\x6B\x6E\x2B\x4D\x1A\x9B\x28\x68\x94\xAC\x01\x79\xA9",
-          'tinytext'=> 'TINYTEXT',
-          'mediumtext'=> 'MEDIUMTEXT',
-          'longtext'=> 'LONGTEXT',
+          'tinytext'=> 'TEXT',
+          'mediumtext'=> 'TEXT',
+          'longtext'=> 'TEXT',
           'text'=> 'TEXT',
           'enum'=> 'A',
           'set'=> 'A'
         ],
-        $result
+        $connection->createQueryTable(null, "SELECT * FROM daydream.store")
       );
 
-      // update by complex keys
-      $target->update(
-        [
-          'tinytext'=> 'TINYTEXT',
-          'mediumtext'=> 'MEDIUMTEXT',
-          'longtext'=> 'LONGTEXT',
-        ],
-        [
-          'tinytext'=> 'TEXT2',
-          'mediumtext'=> 'TEXT2',
-          'longtext'=> 'TEXT2',
-        ]
-      );
+      $tableExports->update(['PK'=> 1], [
+        'tinyint'=> 4,
+      ]);
 
-      $result = $db
-        ->query('SELECT * FROM store WHERE PK=1 LIMIT 1')
-        ->fetch(
-          PDO::FETCH_ASSOC
-        );
-
-      $this->assertEquals(
+      $this->assertTableContains(
         [
-          'PK'=> 1,
+          'PK'=> '1',
           'bit'=> '49',
-          'tinyint'=> '1',
+          'tinyint'=> '4',
           'bool'=> '1',
           'smallint'=> '1000',
           'mediumint'=> '1000',
@@ -296,56 +299,27 @@ namespace GarryDzeng\Store {
           'mediumblob'=> "\xAf\xF9\x15\x6B\x6E\x2B\x4D\x1A\x9B\x28\x68\x94\xAC\x01\x79\xA9",
           'longblob'=> "\xAf\xF9\x15\x6B\x6E\x2B\x4D\x1A\x9B\x28\x68\x94\xAC\x01\x79\xA9",
           'blob'=> "\xAf\xF9\x15\x6B\x6E\x2B\x4D\x1A\x9B\x28\x68\x94\xAC\x01\x79\xA9",
-          'tinytext'=> 'TEXT2',
-          'mediumtext'=> 'TEXT2',
-          'longtext'=> 'TEXT2',
+          'tinytext'=> 'TEXT',
+          'mediumtext'=> 'TEXT',
+          'longtext'=> 'TEXT',
           'text'=> 'TEXT',
           'enum'=> 'A',
           'set'=> 'A'
         ],
-        $result
+        $connection->createQueryTable(null, "SELECT * FROM daydream.store")
       );
-    }
-
-    public function testDeleteWithEmptyKey() {
-
-      $this->expectException(InvalidArgumentException::class);
-
-      $db = $this
-        ->getConnection()
-        ->getConnection();
-
-      $target = new TableSpy($db);
-
-      $target->delete([]);
     }
 
     public function testDelete() {
 
+      $connection = $this->getConnection();
 
-      $db = $this
-        ->getConnection()
-        ->getConnection();
+      $tableExports = new TableExports($connection->getConnection());
 
-      $target = new TableSpy($db);
+      $tableExports->delete(1);
+      $tableExports->delete(['PK'=> 2]);
 
-      $target->delete(1);
-
-      $result = $db
-        ->query('SELECT * FROM store WHERE PK=1 LIMIT 1')
-        ->fetch(
-          PDO::FETCH_ASSOC
-        );
-
-      $this->assertSame(
-        false,
-        $result
-      );
-
-      $target->delete([
-        'PK'=> 2
-      ]);
-
+      $this->assertTableRowCount('store', 0);
     }
   }
 }

@@ -35,12 +35,12 @@ namespace GarryDzeng\Store {
       $statement = $this->source;
       $maps = $this->maps;
 
-      // define parameter by index if you want...
-      // defaults to PARAM_STR...
+      // fallback to PARAM_STR...
       if (!$binding) {
         $binding = $maps[$parameter] ?? PDO::PARAM_STR;
       }
 
+      // a status let caller knows what is error occurred if PDO::ATTR_ERRMODE not be PDO::ERRMODE_EXCEPTION
       return $statement->bindValue(
         $parameter,
         $value,
@@ -57,12 +57,12 @@ namespace GarryDzeng\Store {
       $statement = $this->source;
       $maps = $this->maps;
 
-      // define parameter by index if you want...
-      // defaults to PARAM_STR...
+      // fallback to PARAM_STR...
       if (!$binding) {
         $binding = $maps[$parameter] ?? PDO::PARAM_STR;
       }
 
+      // a status let caller knows what is error occurred if PDO::ATTR_ERRMODE not be PDO::ERRMODE_EXCEPTION
       return $statement->bindParam(
         $parameter,
         $value,
@@ -94,7 +94,7 @@ namespace GarryDzeng\Store {
      * @inheritdoc
      * @throws
      */
-    public function fetchAll($style = self::FETCH_ASSOCIATIVE) {
+    public function fetchAll($style = self::FETCH_ASSOCIATIVE, $column = 0) {
 
       // check style constant
       if (
@@ -107,7 +107,7 @@ namespace GarryDzeng\Store {
           'unrecognized style! '.
           'it should be one of pre-defined constant ('.
             'FECTH_INDEXED=1,'.
-            'FECTH_ASSOCIATIVE=2'.
+            'FECTH_ASSOCIATIVE=2,'.
             'FETCH_NAMED=3'.
           ')'
         );
@@ -142,7 +142,7 @@ namespace GarryDzeng\Store {
      * @inheritdoc
      * @throws
      */
-    public function fetch($indexed = false) {
+    public function fetch($indexed = false, $column = 0) {
 
       $transformer = $this->transformer;
       $source = $this->source;
@@ -160,37 +160,6 @@ namespace GarryDzeng\Store {
       }
 
       return null;
-    }
-
-    /**
-     * @inheritdoc
-     * @throws
-     */
-    public function fetchColumn($column = 0) {
-
-      $transformer = $this->transformer;
-      $source = $this->source;
-
-      // overflow?
-      if ($column < 0x00 || $column > $source->columnCount() - 1) {
-        throw new InvalidArgumentException(
-          sprintf('Fetch failed, column should between 0 and %d (but got %d)', $source->columnCount() - 1, $column)
-        );
-      }
-
-      // first record
-      foreach ($transformer->transform($source) as [
-        'indexed' => $result,
-      ]){
-        return $result[
-          $column
-        ];
-      }
-
-      // no more
-      throw new RuntimeException(
-        sprintf("There are no more rows, plase call to %s::reset() before if you want to fetch again.", __CLASS__)
-      );
     }
 
     /**
@@ -229,7 +198,7 @@ namespace GarryDzeng\Store {
      * @inheritdoc
      * @throws
      */
-    public function paginate() {
+    public function nextRowset() {
       return $this->source->nextRowset();
     }
 

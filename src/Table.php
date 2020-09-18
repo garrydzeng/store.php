@@ -1,96 +1,90 @@
 <?php
 namespace GarryDzeng\Store {
 
+  use PhpMyAdmin\SqlParser\Statements\SelectStatement;
+  use PhpMyAdmin\SqlParser\Components\Condition;
+  use PhpMyAdmin\SqlParser\Components\OrderKeyword;
+  use PhpMyAdmin\SqlParser\Components\Limit;
+  use PhpMyAdmin\SqlParser\Parser;
+  use ReflectionClass;
   use InvalidArgumentException;
   use PDO;
-  use PhpMyAdmin\SqlParser\Components\Condition;
-  use PhpMyAdmin\SqlParser\Components\Limit;
-  use PhpMyAdmin\SqlParser\Components\OrderKeyword;
-  use PhpMyAdmin\SqlParser\Parser;
-  use PhpMyAdmin\SqlParser\Statements\SelectStatement;
-  use ReflectionClass;
 
   /**
    * @inheritdoc
    */
   class Table implements Contract\Table {
 
-    private $name;
     private $definitions;
-    private $parent;
+    private $name;
     private $connection;
     private $id;
 
-    public function __construct(PDO $connection, array $options = []) {
+    public function __construct(PDO $connection, array $options = [
+      self::OPTION_DEFINITIONS => [],
+      self::OPTION_ID => 'id'
+    ])
+    {
+      $this->connection = $connection;
 
       [
-        self::OPTION_DEFINITIONS => $definitions,
-        self::OPTION_NAME => $name,
-        self::OPTION_PARENT => $parent,
-        self::OPTION_ID => $id
+        self::OPTION_NAME => $this->name,
+        self::OPTION_DEFINITIONS => $this->definitions,
+        self::OPTION_ID => $this->id
       ] = $options;
 
-      // use defaults
-      // guess it from shortname of this instance.
-      if (!$name) {
-        $name = $this->tableize();
-      }
+      assert(is_array($this->definitions), new InvalidArgumentException('Parameter definition list should be an array (column => type).'));
 
-      $this->name = $parent ? "`$parent`.`$name`" : "`$name`";
-      $this->connection = $connection;
-      $this->parent = $parent;
-      $this->definitions = $definitions ?? [];
-      $this->id = $id ?? 'id';
+      /**
+       * Append default name if it ends with dot character (prefix) or is empty string (logically)
+       * use shorted name of instance
+       * update property
+       */
+      if ('' == $this->name || '.' == substr($this->name, -1)) {
+        $this->name .= $this->tableize();
+      }
     }
 
     private function tableize() {
       return strtolower(preg_replace('/(?<=\w)([A-Z])/', '_$1', (new ReflectionClass($this))->getShortName()));
     }
 
-    private function whereSingleOrCompositeKey($value, &$composited = false) {
+    private function where(&$composited, $keys) {
 
-      $composited = is_array($value);
-
-      if ($composited) {
-
-        $keys = array_keys($value);
-
-        // check if empty
-        if (!$keys) {
-          throw new InvalidArgumentException(
-            'Key is empty,'.
-            'empty array is not a valid composite key,'.
-            'please check.'
-          );
-        }
-
-        return implode(' AND ', array_map(
-          function($value) { return "`$value`=?"; },
-          $keys
-        ));
+      if (!$keys) {
+        throw new InvalidArgumentException(
+          'Invalid key found,'.
+          'empty array is not a valid composite key,'.
+          'please check.'
+        );
       }
 
-      return "$this->id=?";
-    }
+      $composited = is_array($keys);
 
-    /**
-     * Get calculated offset of :page parameter (used to binding)
-     * @param int $page
-     * @param int $size
-     * @return int
-     */
-    protected function page($page, $size) {
-      return ($page-1) * $size;
+      /**
+       * structure [ this.id => ...] determined as composited key also.
+       * create placeholder from fields,
+       * such as "length=?"
+       */
+      if ($composited) {
+        return array_reduce(array_keys($keys), fn($reduced, $key) => $reduced ? "$reduced AND \x60$key\x60=?" : "\x60$key\x60=?");
+      }
+
+      // determined as primary key (defined by option) otherwize.
+      return "\x60{$this->id}\x60=?";
     }
 
     protected function parameterize($name) {
       return $this->definitions[$name] ?? PDO::PARAM_STR;
     }
 
+    protected function offset($page, $size) {
+      return ($page - 1) * $size;
+    }
+
     protected function paginate($input, $preferNamedParameter = false) {
 
-      // don't use strict mode
-      // because it contains placeholder (named or question marker) probably.
+      // don't use strict mode, because it contains placeholder (named or question marker) probably.
       $statements = (new Parser($input))->statements;
 
       // travel list
@@ -115,13 +109,12 @@ namespace GarryDzeng\Store {
         }
       }
 
-      return implode(';', $statements);
+      return implode(";\n", $statements);
     }
 
     protected function paginateBy($input, $indicator, $preferNamedParameter = false, $reversed = false) {
 
-      // don't use strict mode
-      // because it contains placeholder (named or question marker) probably.
+      // don't use strict mode, because it contains placeholder (named or question marker) probably.
       $statements = (new Parser($input))->statements;
 
       // travel list
@@ -137,7 +130,7 @@ namespace GarryDzeng\Store {
           {
             throw new InvalidArgumentException(
               "Paginate failed because \"$statement\" has LIMIT and/or ORDER BY clause, ".
-              'it conflicts with our action,'.
+              'it conflicts with our action, '.
               'please check.'
             );
           }
@@ -161,20 +154,21 @@ namespace GarryDzeng\Store {
         }
       }
 
-      return implode(';', $statements);
+      return implode(";\n", $statements);
     }
 
     protected function query($input, array $parameters = []) {
 
+      $connection = $this->connection;
+
       if (!$parameters) {
-        return new Statement($this->connection->query($input), $this->definitions);
+        return new Statement($connection->query($input), $this->definitions);
       }
 
-      $statement = $this
-        ->connection
-        ->prepare($input);
+      $statement = $connection->prepare($input);
 
-      foreach ($parameters as $parameter => $value) {
+      // bind key/value
+      foreach ($parameters as $parameter /* column/index */ => $value) {
         $statement->bindValue(
           $parameter,
           $value,
@@ -212,9 +206,7 @@ namespace GarryDzeng\Store {
      */
     public function create(array $state) {
 
-      $fields = array_keys($state);
-
-      if (!$fields) {
+      if (!$state) {
         throw new InvalidArgumentException(
           'State is empty,'.
           'you should pass an associative array (column -> value),'.
@@ -224,16 +216,17 @@ namespace GarryDzeng\Store {
 
       $escaped = [];
       $connection = $this->connection;
-      $count = 0;
+      $count = -1;
 
-      foreach ($fields as $i => $field) {
-        $escaped[] = "`$field`";
+      foreach (array_keys($state) as $key) {
+        $escaped[] = "\x60$key\x60";
         $count++;
       }
 
-      $statement = $connection->prepare(sprintf('INSERT INTO %s(%s)VALUES(?%s)', $this->name, implode(',', $escaped), str_repeat(',?', $count - 1)));
+      $statement = $connection->prepare('INSERT INTO '.$this->name.'('.implode(',', $escaped).')VALUES(?'.str_repeat(',?', $count).')');
       $parameter = 1;
 
+      // bind key/value
       foreach ($state as $ignored => $value) {
         $statement->bindValue(
           $parameter++,
@@ -244,21 +237,19 @@ namespace GarryDzeng\Store {
         );
       }
 
-      $statement->execute();
+      return $statement->execute();
     }
 
     /**
      * @inheritdoc
      * @throws
      */
-    public function update($identity, array $state) {
+    public function update($keys, array $state) {
 
-      $updates = array_keys($state);
-
-      if (!$updates) {
+      if (!$state) {
         throw new InvalidArgumentException(
           'State is empty,'.
-          'you should pass an associative array (column -> value),'.
+          'you should pass an associative array (column => value),'.
           'please check.'
         );
       }
@@ -267,16 +258,11 @@ namespace GarryDzeng\Store {
         ->connection
         ->prepare(
           "UPDATE $this->name ".
-          "SET ".
-            implode(',', array_map(
-              function($update) { return "`$update`=?"; },
-              $updates
-            )).
-          "WHERE ".
-            $this->whereSingleOrCompositeKey(
-              $identity,
-              $composited
-            )
+          'SET '.array_reduce(array_keys($state), function($reduced, $key) { return $reduced ? "$reduced,\x60$key\x60=?" : "\x60$key\x60=?"; }).' '.
+          'WHERE '.$this->where(
+            $composited,
+            $keys
+          )
         );
 
       $parameter = 1;
@@ -291,12 +277,11 @@ namespace GarryDzeng\Store {
         );
       }
 
-      // where: bind as primary key
       if (!$composited) {
-        $statement->bindValue($parameter, $identity, $this->parameterize($this->id));
+        $statement->bindValue($parameter, $keys, $this->parameterize($this->id));
       }
       else {
-        foreach ($identity as $ignored => $value) {
+        foreach ($keys as $ignored => $value) {
           $statement->bindValue(
             $parameter++,
             $value,
@@ -314,25 +299,25 @@ namespace GarryDzeng\Store {
      * @inheritdoc
      * @throws
      */
-    public function delete($identity) {
+    public function delete($keys) {
 
       $statement = $this
         ->connection
         ->prepare(
-          "DELETE FROM $this->name WHERE ".$this->whereSingleOrCompositeKey(
-            $identity,
-            $composited
+          "DELETE FROM $this->name WHERE ".$this->where(
+            $composited,
+            $keys
           )
         );
 
       if (!$composited) {
-        $statement->bindValue(1, $identity, $this->parameterize($this->id));
+        $statement->bindValue(1, $keys, $this->parameterize($this->id));
       }
       else {
 
         $parameter = 1;
 
-        foreach ($identity as $ignored => $value) {
+        foreach ($keys as $ignored => $value) {
           $statement->bindValue(
             $parameter++,
             $value,
