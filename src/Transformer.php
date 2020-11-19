@@ -97,28 +97,15 @@ namespace GarryDzeng\Store {
       for ($index = 0, $total = $statement->columnCount(); $index < $total; $index++) {
 
         [
-          'name'=> $NAME,
-          'native_type'=> $NATIVETYPE,
-          'len'=> $LEN
+          'name'=> $name,
+          'native_type'=> $nativeType,
+          'flags'=> $flags,
+          'len'=> $len
         ] = $statement->getColumnMeta($index);
 
-        // check if unsupported
-        if (!isset(
-          $NAME,
-          $NATIVETYPE,
-          $LEN
-        ))
-        {
-          throw new InvalidArgumentException(
-            'Metadata not found, '.
-            'this database driver does not support PDO::getColumnMeta(int) function or '.
-            'no result exists'
-          );
-        }
-
         $extras[] = $this->keyof(
-          $NATIVETYPE,
-          $LEN
+          $nativeType,
+          $len
         );
 
         // the intermediate result will overlay everytime ...
@@ -127,7 +114,7 @@ namespace GarryDzeng\Store {
 
         // index->name
         if ($addAssociativeArray) {
-          $maps[] = $NAME;
+          $maps[] = $name;
         }
       }
 
